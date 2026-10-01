@@ -151,6 +151,14 @@ docker compose down
 
 The smoke command is deliberately small. It proves that streaming, metrics scraping and result artifacts work; it is not a benchmark result. Do not begin the A–E matrix until all dataset placeholders have been replaced and `python3 scripts/preflight.py` passes without `--allow-placeholders`.
 
+After pinning the model revision and replacing the dataset placeholders, generate a token-length report inside the vLLM container:
+
+```bash
+docker compose exec vllm python /workspace/scripts/tokenizer_report.py
+```
+
+The report is written to `results/tokenizer-report.json`. Review actual post-template token counts before selecting the final prompt documents or making any tokenizer-efficiency claim.
+
 - [ ] Preflight: เลือก GPU/image/revisions ตรวจ model access, memory budget และ supported feature combinations
 - [ ] Pinned Docker deployment พร้อม health check และ start/stop commands
 - [ ] Thai JSONL datasets, tokenizer report และ lengths/template validation
