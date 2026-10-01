@@ -132,7 +132,7 @@ The repository now includes a starting configuration at `config/benchmark_matrix
 python3 scripts/preflight.py --allow-placeholders
 ```
 
-This local check is intentionally not a GPU benchmark. Before a real GPU run, replace all placeholder documents with licensed Thai text, make the shared prefix byte-identical across its requests, pin the model revision, and run `python3 scripts/preflight.py` without the flag.
+This local check is intentionally not a GPU benchmark. Before a real GPU run, replace all placeholder documents with licensed Thai text, make the shared prefix byte-identical across its requests, confirm the pinned model revision, and run `python3 scripts/preflight.py` without the flag.
 
 ### EC2 Docker smoke test
 

@@ -104,7 +104,7 @@ def main() -> None:
     print("Scaffold structure is valid.")
     print(f"Dataset SHA-256: {digest}")
     if allow_placeholders:
-        print("Scaffold mode: placeholders and unpinned model revision are allowed only for local structure checks.")
+        print("Scaffold mode: dataset placeholders are allowed only for local structure checks.")
     else:
         print("Preflight passed for a GPU benchmark run.")
 
