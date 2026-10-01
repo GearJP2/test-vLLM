@@ -1,0 +1,26 @@
+services:
+  vllm:
+    image: ${VLLM_IMAGE:?Set an immutable vLLM image tag or digest in .env}
+    container_name: thai-vllm
+    restart: "no"
+    ports:
+      - "127.0.0.1:${VLLM_PORT:-8000}:8000"
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /root/.cache/huggingface
+      MODEL_ID: ${MODEL_ID:?Set MODEL_ID in .env}
+      MODEL_REVISION: ${MODEL_REVISION:?Set an immutable MODEL_REVISION in .env}
+      SERVED_MODEL_NAME: ${SERVED_MODEL_NAME:-thai-benchmark-model}
+      VLLM_ARGS: ${VLLM_ARGS:-}
+    volumes:
+      - ${HF_CACHE_DIR:-./.cache/huggingface}:/root/.cache/huggingface
+    entrypoint: ["/bin/sh", "-lc"]
+    command: >-
+      vllm serve "$${MODEL_ID}"
+      --revision "$${MODEL_REVISION}"
+      --served-model-name "$${SERVED_MODEL_NAME}"
+      --host 0.0.0.0
+      --port 8000
+      $${VLLM_ARGS}
+    gpus: all
+    shm_size: 8gb

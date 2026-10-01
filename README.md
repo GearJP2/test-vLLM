@@ -134,6 +134,23 @@ python3 scripts/preflight.py --allow-placeholders
 
 This local check is intentionally not a GPU benchmark. Before a real GPU run, replace all placeholder documents with licensed Thai text, make the shared prefix byte-identical across its requests, pin the model revision, and run `python3 scripts/preflight.py` without the flag.
 
+### EC2 Docker smoke test
+
+Run the server and the benchmark runner on the same EC2 host. The API binds only to `127.0.0.1`, so it is not exposed publicly by the compose file.
+
+```bash
+cp .env.example .env
+# Edit .env: use an immutable vLLM image digest, a model commit SHA, and one variant's VLLM_ARGS.
+docker compose config
+docker compose up -d
+curl --fail http://127.0.0.1:8000/health
+python3 scripts/benchmark_runner.py --variant D --workload short --concurrency 1 --requests 2 --warmup-requests 1
+docker compose logs --tail=100 vllm
+docker compose down
+```
+
+The smoke command is deliberately small. It proves that streaming, metrics scraping and result artifacts work; it is not a benchmark result. Do not begin the A–E matrix until all dataset placeholders have been replaced and `python3 scripts/preflight.py` passes without `--allow-placeholders`.
+
 - [ ] Preflight: เลือก GPU/image/revisions ตรวจ model access, memory budget และ supported feature combinations
 - [ ] Pinned Docker deployment พร้อม health check และ start/stop commands
 - [ ] Thai JSONL datasets, tokenizer report และ lengths/template validation
