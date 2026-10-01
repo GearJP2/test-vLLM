@@ -1,58 +1,149 @@
-# Role & Goal
-คุณคือ Senior AI/ML Infrastructure Engineer หน้าที่ของคุณคือช่วยฉันวางระบบและ Benchmark ประสิทธิภาพการให้บริการ LLM ภาษาไทยบน Single Pod ด้วย vLLM ก่อนนำผลลัพธ์ไปนำเสนอในทีม
+# Thai LLM Serving Benchmark with vLLM
 
----
+## 1. เป้าหมายและขอบเขต
 
-## 1. Environment & Hardware Setup
-- **Hardware:** NVIDIA GPU ( single pod / single GPU หรือ Multi-GPU Tensor Parallelism เช่น 1x A100/H100 หรือ DGX Spark ตามสภาพแวดล้อมจริง)
-- **Serving Engine:** vLLM (Latest Version)
-- **Orchestrator:** Kubernetes (Single Pod Deployment) หรือ Docker Container
+Benchmark LLM ภาษาไทยขนาด 7B–14B บน GPU host เดียว เริ่มจาก Docker container เดียว แล้วเพิ่ม Kubernetes single pod เมื่อทดสอบ deployment จริง
 
----
+คำถามหลัก: ข้อความไทยเดียวกันใช้กี่ tokens ในแต่ละ tokenizer, prefix caching/chunked prefill ส่งผลต่อ latency/throughput อย่างไร และแต่ละ configuration รองรับ load ได้เท่าไร
 
-## 2. Target Models for Testing
-เลือกทดสอบโมเดล 7B - 14B ที่รองรับภาษาไทยได้ดี เพื่อเปรียบเทียบเรื่อง Tokenizer Efficiency:
-1. **SeaLLM / Typhoon 2 (7B/8B/14B):** โมเดลที่ Optimize Tokenizer สำหรับภาษาไทยมาโดยเฉพาะ
-2. **Qwen2.5 (7B / 14B):** โมเดล Multilingual ที่มี Vocabulary Size ใหญ่ (กินโทเคนไทยน้อย)
-3. **Llama 3.1 / 3.3 (8B):** Base/Instruct Model มาตรฐานเพื่อใช้เป็น Baseline
+ระยะแรกวัด infrastructure และ tokenizer ไม่ใช่การจัดอันดับคุณภาพภาษาไทย หากเลือกโมเดลสำหรับ production ต้องเพิ่ม quality evaluation แยกต่างหาก
 
----
+## 2. Local development และ GPU server
 
-## 3. Test Dataset & Input Scenarios
-สร้าง Dataset ภาษาไทย 3 สไตล์เพื่อวัดผลตาม Behavior ของ Workload จริง:
-1. **Short Prompt / High Concurrency:** คำถามทั่วไปสั้นๆ (Input 100-300 tokens, Output 200 tokens)
-2. **Long Context / RAG Workflow:** เอกสารภาษาไทยยาวๆ เช่น สรุปรายงาน/เอกสารราชการ (Input 2,000 - 8,000 tokens, Output 500 tokens)
-3. **Shared Prefix Workload:** ใช้ System Prompt ภาษาไทยยาวๆ เดียวกันทุก Request เพื่อทดสอบ Prefix Caching (Input: System Prompt 2,000 tokens + User Query 100 tokens)
+| งาน | เครื่องส่วนตัว | GPU server |
+|---|---|---|
+| Dataset, tokenizer analysis, runner/report development | เหมาะสม ไม่ต้องโหลด model weights | ทำได้ |
+| Smoke test ด้วย mock streaming server หรือโมเดลเล็ก | เหมาะสม; GPU test ต้องมี GPU ที่รองรับ | ทำได้ |
+| 7B–14B, long context, concurrent requests | ทำได้เมื่อ GPU/VRAM เพียงพอ | แนะนำสำหรับผลนำเสนอทีม |
 
----
+ประมาณการเพื่อวางแผน: BF16/FP16 weights ใช้ราว 2 bytes/parameter หรือ 14–16 GB สำหรับ 7B–8B และ 28 GB สำหรับ 14B ยังไม่รวม KV cache, activations และ runtime overhead. GPU 24 GB อาจพอสำหรับ 7B–8B ที่ context/concurrency จำกัด; 48–80 GB มีพื้นที่สำหรับ 14B และ workload หนักมากขึ้น แต่ต้องตรวจ memory จริง ไม่รับประกันว่า matrix ทั้งหมดจะพอดี
 
-## 4. Test Matrix & Configuration Variants
-ทำการรัน Benchmark เปรียบเทียบ vLLM ตาม Flag ต่างๆ ดังนี้:
-- **Variant A (Baseline):** vLLM Default Settings
-- **Variant B (Prefix Caching):** `--enable-prefix-caching`
-- **Variant C (Chunked Prefill):** `--enable-chunked-prefill` `--max-num-batched-tokens 512`
-- **Variant D (Full Tuned):** `--enable-prefix-caching` + `--enable-chunked-prefill` + `--gpu-memory-utilization 0.90`
+เริ่ม GPU เดียวและ tensor parallelism = 1. Multi-GPU เป็นการทดลองแยก ห้ามรวม hardware ต่างกันเป็นการเปรียบเทียบ configuration เดียวกัน ใช้ runner บน GPU host หรือ network เดียวกัน; หากยิงจาก laptop ผ่านอินเทอร์เน็ต ให้แยกเป็น remote end-to-end results พร้อมระบุ network path
 
----
+ก่อน benchmark ต้องบันทึก run manifest:
 
-## 5. Evaluation Metrics
-ดึงข้อมูลสถิติผ่าน vLLM Prometheus Metrics (`/metrics`) และ `benchmark_serving.py`:
+- GPU รุ่น/จำนวน/VRAM, CPU, RAM, OS/architecture, NVIDIA driver, CUDA/runtime และ container resource limits
+- vLLM version และ image digest ที่แน่นอน ไม่ใช้ floating latest
+- Model/tokenizer IDs และ commit revisions, chat template, dtype, quantization และ KV-cache dtype
+- Effective server configuration: context limit, batch-token budget, max sequences, memory utilization, TP และ feature states
+- Dataset hash, runner version/commit, seed, generation settings และ network placement
 
-1. **Tokenizer & Cost Metrics:**
-   - **Compression Ratio / Tokens per Word:** จำนวน Token ภาษาไทยที่ได้เทียบกับภาษาอังกฤษในประโยคความหมายเดียวกัน
-2. **Latency Metrics:**
-   - **Time to First Token (TTFT):** ความเร็วในการเริ่มสร้างคำแรก (วัดผลกระทบจาก Prefill Phase ของภาษาไทย)
-   - **Time Per Output Token (TPOT) / Inter-token Latency:** ความเร็วในการเจนคำถัดๆ ไป
-3. **Throughput & Efficiency Metrics:**
-   - **Request Throughput (req/s):** จำนวน Request ที่รับได้ต่อวินาที
-   - **Token Throughput (tokens/s):** จำนวน Output Token ที่ผลิตได้ต่อวินาที
-   - **Cache Hit Rate (`vllm:gpu_prefix_cache_hit_rate`):** อัตราการ Hit ของ Prefix Caching
-   - **KV Cache Memory Usage (`vllm:gpu_cache_usage_perc`):** เปอร์เซ็นต์การดึง Memory ไปใช้
+สิ่งที่ยังต้องเลือกเมื่อทราบเครื่องจริง: GPU, image/version, model revisions, resource limits และ latency SLO. เริ่มงาน dataset/runner ได้ก่อน แต่ห้ามสรุป production capacity โดยไม่มีบริบทนี้
 
----
+## 3. Model shortlist
 
-## 6. Execution Steps for Codex
-โปรดช่วยฉันดำเนินการตามลำดับดังนี้:
-1. เขียนสคริปต์ Dockerfile หรือ Kubernetes Deployment YAML สำหรับเตรียม vLLM Server
-2. เขียนสคริปต์ Python (`benchmark_runner.py`) สำหรับยิง Request ภาษาไทยจำลองแบบต่างๆ ตาม Dataset ข้อ 3
-3. ดึงค่า Metrics (TTFT, TPOT, Throughput, Cache Hit Rate) มารวบรวมเป็น Markdown Table เพื่อสรุปผลการเปรียบเทียบแต่ละ Variant
+เริ่ม pipeline ด้วย Qwen2.5-7B-Instruct หนึ่งโมเดล แล้วขยายตามลำดับ:
+
+| Model ID | บทบาท |
+|---|---|
+| `Qwen/Qwen2.5-7B-Instruct` | Initial multilingual model |
+| `typhoon-ai/llama3.1-typhoon2-8b-instruct` | Thai-focused model |
+| `meta-llama/Llama-3.1-8B-Instruct` | Baseline; ตรวจ license/access ก่อน download |
+| `Qwen/Qwen2.5-14B-Instruct` | Optional size comparison เมื่อ memory เพียงพอ |
+
+ใช้ Instruct checkpoints และ template ของแต่ละโมเดล บันทึก template overhead แยกจากข้อความดิบ ตรวจ tokenizer จริง ไม่ถือว่า Thai fine-tuning ทำให้ tokenizer ต่างหรือดีกว่าโดยอัตโนมัติ
+
+SeaLLM เป็น optional follow-up หลังเลือก exact checkpoint. ตัดรายการกำกวม “Llama 3.3 8B” ออกจาก matrix นี้
+
+## 4. Dataset และ workloads
+
+แยกการทดลองสองชุด:
+
+1. **Same-text:** ข้อความไทย/task เดียวกันทุกโมเดล วัด token count และ practical task latency โดยยอมให้จำนวน tokens ต่างกัน รายงาน actual lengths และ truncation
+2. **Controlled-token:** จัด lengths ตาม tokenizer ของแต่ละโมเดลเพื่อวัด serving ภายใต้ token load ที่กำหนด ไม่ถือว่าทุกโมเดลประมวลผลเนื้อหาเท่ากัน
+
+| Workload | Input tokens สำหรับ controlled-token test | Output tokens |
+|---|---|---|
+| Short prompt | Buckets 100 และ 300 | 200 |
+| Long context / RAG-like generation | Buckets 2,000 และ 8,000 | 500 |
+| Shared prefix | System prefix 2,000 + unique query 100 | 200 |
+
+RAG-like test ไม่รวม retrieval/embedding. นับ input หลังใช้ chat template; shared-prefix lengths เป็นเป้าหมายและต้องบันทึก actual lengths. ตรวจ context limit ว่ารองรับ input + output รวม template ก่อนรัน
+
+- JSONL มี stable ID, workload, source/license และ task; ใช้ข้อมูลที่เผยแพร่ได้ พร้อม dataset hash/seed
+- ใช้ข้อความไทยที่อ่านรู้เรื่อง ไม่ซ้ำทั้ง prompt โดยไม่ตั้งใจ
+- Tokenizer report: tokens ต่อ Unicode code point ของข้อความดิบภายใต้ normalization ที่กำหนด; Thai/English token ratio ใช้คู่ประโยคที่ตรวจความหมายแล้ว ถ้าใช้ tokens/word ต้องระบุ Thai word segmenter/version
+- Controlled-token mode ใช้ fixed output length และ ignore EOS หาก engine รองรับ ตรวจ actual length เสมอ
+- Same-text natural-stop mode ใช้ output cap, temperature 0 และ sampling settings ที่ระบุชัดเจน รายงาน EOS/length finish reasons ไม่ถือว่า cap เท่ากับ output จริง
+
+## 5. Configuration matrix
+
+vLLM V1 อาจเปิด prefix caching และ chunked prefill โดย default จึงต้องกำหนด On/Off ชัดเจนและเก็บ resolved configuration
+
+| Variant | Prefix caching | Chunked prefill |
+|---|---|---|
+| A | Off | Off |
+| B | On | Off |
+| C | Off | On |
+| D | On | On |
+| E (reference) | Engine default | Engine default |
+
+สำหรับ A–D คง memory utilization, max sequences, context limit, dtype และ batch-token budget เท่ากัน เลือก budget ที่ valid เมื่อปิด chunked prefill ตาม pinned version (initial matrix ใช้ค่ามากกว่า context limit). ตรวจ supported combinations; ถ้าไม่รองรับให้รายงาน unsupported ไม่ fallback เงียบ ๆ
+
+E ใช้ hardware/model/dtype/context เดียวกัน แต่ปล่อย tuning defaults ของ engine พร้อมบันทึกค่าจริง เป็น reference ไม่ใช่ causal comparison ของ feature เดียว
+
+หลัง A–D จึง sweep batch-token budget เช่น 512, 2,048, 8,192 ใน configuration ที่เปิด chunked prefill และ valid กับ scheduler settings. Memory utilization 0.90 เป็น initial candidate เมื่อ memory check ผ่านและคงเท่ากันระหว่าง A–D; sweep memory แยกต่างหาก ไม่เรียก “Full Tuned” ก่อนมีผลทดลอง
+
+## 6. Load protocol และ cache isolation
+
+- Initial closed-loop concurrency sweep: 1, 4, 8, 16, 32 ส่ง request ใหม่เมื่อมี slot ว่าง และตรวจว่า client ไม่เป็น bottleneck
+- เริ่ม smoke test: 1 model × short/100-token workload × concurrency 1 แล้วขยาย matrix ทีละส่วน
+- Pilot ต่อ cell: 20 unmeasured warm-up requests, 200 measured requests และอย่างน้อย 3 repetitions รายงาน duration/sample count จริง เพิ่ม samples เมื่อผลยังไม่นิ่งหรือจะอ้าง tail latency
+- Initial per-request timeout 120 seconds (configurable); ไม่ retry เงียบ ๆ นับ failed/timed-out/cancelled requests หยุด cell ที่ OOM และบันทึกสถานะ
+- สลับลำดับ variants ด้วย seed ที่บันทึกไว้ ตรวจไม่มี workload อื่นแย่ง GPU แยก startup/compilation ออกจาก measured window
+- Warm up ด้วย unrelated prompts แล้ว reset prefix cache โดยวิธีที่ version รองรับ ตรวจ reset สำเร็จ หรือ restart แล้ว warm up ใหม่ด้วย unrelated prompts
+- **Cold-start shared-prefix run:** เริ่มโดยไม่มี target prefix cached แล้วปล่อย cache อุ่นตาม requests รายงาน first request แยก; ผลรวมไม่ใช่ all-miss workload
+- **Warm shared-prefix run:** หลัง reset ให้ preload target prefix จน request จบก่อนวัด ใช้ prefix token IDs เดิมภายในโมเดลเดียวกันและ unique queries ตัด preload ออกจาก measured window
+- เก็บ metrics snapshot หลัง warm-up/preload และหลัง drain requests จบ พร้อม periodic scrape เพื่อเห็น peak usage
+- Optional open-loop request-rate sweep: แยก offered rate, achieved rate และ concurrency cap เพื่อวิเคราะห์ queueing/saturation
+
+## 7. Metrics และ artifacts
+
+ใช้ streaming client สำหรับ user-visible latency และ /metrics สำหรับ server diagnostics. พิจารณาใช้ `vllm bench serve` ของ version ที่ pin โดยให้ `benchmark_runner.py` orchestrate dataset/matrix/results
+
+| Metric | Definition / reporting |
+|---|---|
+| TTFT | เวลาจากส่ง request จนได้ content แรก รวม queue/network ไม่ใช่ prefill อย่างเดียว |
+| TPOT | (last-token time − first-token time) / (output tokens − 1); N/A เมื่อ output ≤1 token |
+| Inter-token latency | ช่องว่างระหว่าง streamed outputs; chunk อาจมีหลาย tokens จึงไม่เท่ากับ TPOT เสมอ |
+| End-to-end latency | เวลาจากส่ง request จน request จบ |
+| Throughput | Successful completed requests/s และ actual output tokens จาก successful requests/s ใน measured window รวม drain |
+| Reliability | attempted/succeeded/failed/timed-out, finish reasons, OOM และ preemptions |
+| Prefix cache hit ratio | Delta hits / delta queries ภายใน measured window ตามหน่วย exporter; denominator 0 เป็น N/A |
+| KV cache occupancy | ค่าเฉลี่ย/สูงสุดของ used cache blocks ไม่ใช่ total GPU memory |
+
+รายงาน p50/p95 ของ TTFT, TPOT และ end-to-end latency พร้อมผลแต่ละ repetition และความแปรปรวนระหว่างรอบ. ตรวจชื่อจาก endpoint จริง: current docs ใช้ `vllm:kv_cache_usage_perc` และ prefix-cache query/hit counters; exporter อาจมี `_total` suffix. ตรวจ HELP/TYPE/labels รวม counters อย่างสอดคล้องกัน และแปลงหน่วย 0–1 เป็น percent อย่างชัดเจน
+
+หากมี SLO ให้รายงาน goodput (successful requests/s ที่ผ่าน latency targets ทั้งหมด). หากยังไม่มี ให้รายงาน trade-offs ไม่ประกาศผู้ชนะหนึ่งเดียว
+
+ถ้ารายงานต้นทุน ให้ระบุราคา server ต่อชั่วโมงและต้นทุนต่อ 1,000 successful requests ของ workload เดียวกัน แยก startup/idle/download cost; token count อย่างเดียวไม่ใช่ค่าใช้จ่ายจริง
+
+เก็บ run manifest, dataset/hash, raw per-request JSONL, metrics snapshots/time series, server logs, CSV และ Markdown report พร้อม reproducible commands. ห้ามใส่ access tokens ใน artifacts
+
+## 8. Implementation checklist และ acceptance criteria
+
+ติดตามงานใน [GitHub issue #1](https://github.com/GearJP2/test-vLLM/issues/1)
+
+- [ ] Preflight: เลือก GPU/image/revisions ตรวจ model access, memory budget และ supported feature combinations
+- [ ] Pinned Docker deployment พร้อม health check และ start/stop commands
+- [ ] Thai JSONL datasets, tokenizer report และ lengths/template validation
+- [ ] Runner/config สำหรับ A–E, concurrency sweep, warm-up, cache isolation, timeout และ raw results
+- [ ] Client latency และ server metrics ที่ใช้ measured window เดียวกัน
+- [ ] Deterministic streaming/metric calculation validation และ GPU smoke test หนึ่ง cell
+- [ ] Pilot หนึ่งโมเดลครบ A–E และ 3 workloads ก่อนขยาย models; บันทึก failed/unsupported cells
+- [ ] CSV/Markdown report: hardware, variance, configuration trade-offs และ limitations
+- [ ] Optional: SLO/goodput, quality/cost evaluation, budget sweep, 14B และ Kubernetes single-pod validation
+
+เสร็จเมื่อรันซ้ำได้จาก documented commands บน hardware ที่ระบุ, results ผูกกับ manifest/dataset, feature states ตรวจสอบได้, warm-up ไม่ปะปนกับ measured results และ report ไม่ซ่อน failures หรืออ้างเกินขอบเขตการทดสอบ
+
+## References
+
+- [vLLM GPU requirements](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/)
+- [vLLM tuning and chunked-prefill constraints](https://docs.vllm.ai/en/latest/configuration/optimization/)
+- [vLLM metric definitions](https://docs.vllm.ai/en/latest/design/metrics/)
+- [vLLM benchmark CLI](https://github.com/vllm-project/vllm/blob/main/docs/benchmarking/cli.md)
+- [Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
+- [Typhoon2-8B-Instruct](https://huggingface.co/typhoon-ai/llama3.1-typhoon2-8b-instruct)
+- [Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
+
+References ชี้ latest docs เพื่อค้นข้อมูล; ตอน implement ต้องยึด documentation/help ของ pinned version และบันทึกความต่าง
