@@ -141,6 +141,8 @@ Run the server and the benchmark runner on the same EC2 host. The API binds only
 ```bash
 cp .env.example .env
 # Edit .env: use an immutable vLLM image digest, a model commit SHA, and one variant's VLLM_ARGS.
+chmod +x scripts/ec2_preflight.sh
+./scripts/ec2_preflight.sh
 docker compose config
 docker compose up -d
 curl --fail http://127.0.0.1:8000/health
