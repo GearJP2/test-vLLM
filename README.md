@@ -124,6 +124,16 @@ E ใช้ hardware/model/dtype/context เดียวกัน แต่ป�
 
 ติดตามงานใน [GitHub issue #1](https://github.com/GearJP2/test-vLLM/issues/1)
 
+### Current local scaffold
+
+The repository now includes a starting configuration at `config/benchmark_matrix.json`, a versioned dataset seed at `data/thai_workloads.jsonl`, and a dependency-free structural check:
+
+```bash
+python3 scripts/preflight.py --allow-placeholders
+```
+
+This local check is intentionally not a GPU benchmark. Before a real GPU run, replace all placeholder documents with licensed Thai text, make the shared prefix byte-identical across its requests, pin the model revision, and run `python3 scripts/preflight.py` without the flag.
+
 - [ ] Preflight: เลือก GPU/image/revisions ตรวจ model access, memory budget และ supported feature combinations
 - [ ] Pinned Docker deployment พร้อม health check และ start/stop commands
 - [ ] Thai JSONL datasets, tokenizer report และ lengths/template validation
