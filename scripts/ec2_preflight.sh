@@ -17,8 +17,8 @@ printf '%s\n' 'Docker:'
 docker version --format '{{.Server.Version}}'
 
 available_gib=$(df -Pk . | awk 'NR == 2 { print int($4 / 1024 / 1024) }')
-if [ "$available_gib" -lt 80 ]; then
-  fail "only ${available_gib} GiB free in the repository filesystem; allocate a 100 GiB root volume (at least 80 GiB free) before downloading a 7B model"
+if [ "$available_gib" -lt 40 ]; then
+  fail "only ${available_gib} GiB free in the repository filesystem; use a 100 GiB root volume and retain at least 40 GiB after the vLLM image is pulled for a 7B smoke test"
 fi
 printf 'Available disk in repository filesystem: %s GiB\n' "$available_gib"
 
