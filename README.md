@@ -162,7 +162,7 @@ sudo chown -R "$USER":"$USER" results
 After pinning the model revision and replacing the dataset placeholders, generate a token-length report inside the vLLM container:
 
 ```bash
-docker compose exec vllm python /workspace/scripts/tokenizer_report.py
+docker compose exec vllm python3 /workspace/scripts/tokenizer_report.py
 ```
 
 The report is written to `results/tokenizer-report.json`. Review actual post-template token counts before selecting the final prompt documents or making any tokenizer-efficiency claim.
@@ -170,10 +170,10 @@ The report is written to `results/tokenizer-report.json`. Review actual post-tem
 For the initial serving pilot, generate an authored synthetic Thai corpus on the GPU host. The script uses the pinned tokenizer and writes JSONL through standard output, so the resulting file remains owned by the host user:
 
 ```bash
-docker compose exec -T vllm python /workspace/scripts/build_thai_workloads.py \
+docker compose exec -T vllm python3 /workspace/scripts/build_thai_workloads.py \
   > results/thai-workloads-qwen.jsonl
 
-docker compose exec -T vllm python /workspace/scripts/tokenizer_report.py \
+docker compose exec -T vllm python3 /workspace/scripts/tokenizer_report.py \
   --dataset /workspace/results/thai-workloads-qwen.jsonl \
   --output /workspace/results/tokenizer-report-qwen.json
 ```
