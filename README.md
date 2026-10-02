@@ -153,6 +153,12 @@ docker compose down
 
 The smoke command is deliberately small. It proves that streaming, metrics scraping and result artifacts work; it is not a benchmark result. Do not begin the A–E matrix until all dataset placeholders have been replaced and `python3 scripts/preflight.py` passes without `--allow-placeholders`.
 
+The container runs as root to access its model cache. If a host-side runner cannot write to `results/` after the first container start, repair the bind-mount ownership once:
+
+```bash
+sudo chown -R "$USER":"$USER" results
+```
+
 After pinning the model revision and replacing the dataset placeholders, generate a token-length report inside the vLLM container:
 
 ```bash
