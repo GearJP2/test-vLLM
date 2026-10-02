@@ -9,6 +9,7 @@ benchmark or a substitute for an organization's production corpus.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -73,14 +74,16 @@ def row(identifier: str, workload: str, prompt: str, target_input: int, output: 
 def main() -> None:
     config = json.loads(CONFIG.read_text(encoding="utf-8"))
     model, revision = config["model"]["id"], config["model"]["revision"]
-    tokenizer = AutoTokenizer.from_pretrained(model, revision=revision)
-    rows: list[dict[str, Any]] = []
+    print("Loading pinned tokenizer from the local container cache...", file=sys.stderr, flush=True)
+    tokenizer = AutoTokenizer.from_pretrained(model, revision=revision, local_files_only=True)
+    print("Building short workloads...", file=sys.stderr, flush=True)
     for target, base in SHORT_BASE.items():
         prompt = fill(tokenizer, lambda value: [{"role": "user", "content": value}], base, target)
-        rows.append(row(f"short-{target}", "short", prompt, target, 200))
+        print(json.dumps(row(f"short-{target}", "short", prompt, target, 200), ensure_ascii=False), flush=True)
+    print("Building long workloads; 8K token calibration can take a short while...", file=sys.stderr, flush=True)
     for target in (2000, 8000):
         prompt = fill(tokenizer, lambda value: [{"role": "user", "content": value}], LONG_BASE, target)
-        rows.append(row(f"long-{target}", "long_context", prompt, target, 500))
+        print(json.dumps(row(f"long-{target}", "long_context", prompt, target, 500), ensure_ascii=False), flush=True)
     # Keep exactly the same system prefix for each shared-prefix request.
     system_prompt = fill(
         tokenizer,
@@ -90,9 +93,8 @@ def main() -> None:
     )
     for index, query in enumerate(PREFIX_QUERIES, start=1):
         target = token_count(tokenizer, [{"role": "system", "content": system_prompt}, {"role": "user", "content": query}])
-        rows.append(row(f"prefix-{index:03d}", "shared_prefix", query, target, 200, system_prompt=system_prompt))
-    for item in rows:
-        print(json.dumps(item, ensure_ascii=False))
+        print(json.dumps(row(f"prefix-{index:03d}", "shared_prefix", query, target, 200, system_prompt=system_prompt), ensure_ascii=False), flush=True)
+    print("Thai workload generation completed.", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
