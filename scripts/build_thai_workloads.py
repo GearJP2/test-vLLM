@@ -45,7 +45,7 @@ PREFIX_QUERIES = [
 
 def token_count(tokenizer: Any, messages: list[dict[str, str]]) -> int:
     rendered = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
-    if isinstance(rendered, dict):
+    if isinstance(rendered, dict) or (hasattr(rendered, "keys") and "input_ids" in rendered):
         rendered = rendered["input_ids"]
     if hasattr(rendered, "tolist"):
         rendered = rendered.tolist()

@@ -36,7 +36,7 @@ def render_messages(row: dict[str, Any]) -> list[dict[str, str]]:
 
 def token_count(tokenized: Any) -> int:
     """Normalize Transformers list, tensor, or BatchEncoding outputs to IDs."""
-    if isinstance(tokenized, dict):
+    if isinstance(tokenized, dict) or (hasattr(tokenized, "keys") and "input_ids" in tokenized):
         tokenized = tokenized["input_ids"]
     if hasattr(tokenized, "tolist"):
         tokenized = tokenized.tolist()
