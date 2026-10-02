@@ -167,6 +167,19 @@ docker compose exec vllm python /workspace/scripts/tokenizer_report.py
 
 The report is written to `results/tokenizer-report.json`. Review actual post-template token counts before selecting the final prompt documents or making any tokenizer-efficiency claim.
 
+For the initial serving pilot, generate an authored synthetic Thai corpus on the GPU host. The script uses the pinned tokenizer and writes JSONL through standard output, so the resulting file remains owned by the host user:
+
+```bash
+docker compose exec -T vllm python /workspace/scripts/build_thai_workloads.py \
+  > results/thai-workloads-qwen.jsonl
+
+docker compose exec -T vllm python /workspace/scripts/tokenizer_report.py \
+  --dataset /workspace/results/thai-workloads-qwen.jsonl \
+  --output /workspace/results/tokenizer-report-qwen.json
+```
+
+Review the report and preserve its hash with the results. The generated corpus is suitable for infrastructure testing only; replace it with representative licensed production-like text before making a production capacity recommendation.
+
 - [ ] Preflight: เลือก GPU/image/revisions ตรวจ model access, memory budget และ supported feature combinations
 - [ ] Pinned Docker deployment พร้อม health check และ start/stop commands
 - [ ] Thai JSONL datasets, tokenizer report และ lengths/template validation
