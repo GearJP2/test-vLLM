@@ -34,6 +34,17 @@ def render_messages(row: dict[str, Any]) -> list[dict[str, str]]:
     return messages
 
 
+def token_count(tokenized: Any) -> int:
+    """Normalize Transformers list, tensor, or BatchEncoding outputs to IDs."""
+    if isinstance(tokenized, dict):
+        tokenized = tokenized["input_ids"]
+    if hasattr(tokenized, "tolist"):
+        tokenized = tokenized.tolist()
+    while tokenized and isinstance(tokenized[0], list):
+        tokenized = tokenized[0]
+    return len(tokenized)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=ROOT / "config" / "benchmark_matrix.json")
@@ -66,7 +77,7 @@ def main() -> None:
         rendered_token_ids = tokenizer.apply_chat_template(
             render_messages(row), tokenize=True, add_generation_prompt=True
         )
-        actual = len(rendered_token_ids)
+        actual = token_count(rendered_token_ids)
         target = row["target_input_tokens"]
         report_rows.append({
             "id": row["id"],
