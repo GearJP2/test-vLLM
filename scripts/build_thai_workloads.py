@@ -9,6 +9,7 @@ benchmark or a substitute for an organization's production corpus.
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -47,15 +48,26 @@ def token_count(tokenizer: Any, messages: list[dict[str, str]]) -> int:
 
 
 def fill(tokenizer: Any, make_messages: Any, base: str, target: int) -> str:
-    """Extend text until it reaches the nearest usable token count at/above target."""
-    text = base
-    while token_count(tokenizer, make_messages(text)) < target:
-        text += " " + FILLER
-    # Trim whole filler repetitions where possible while retaining target length.
+    """Reach target with O(log n) tokenizer calls rather than repeated appends."""
     suffix = " " + FILLER
-    while text.endswith(suffix) and token_count(tokenizer, make_messages(text[: -len(suffix)])) >= target:
-        text = text[: -len(suffix)]
-    return text
+    base_tokens = token_count(tokenizer, make_messages(base))
+    if base_tokens >= target:
+        return base
+    one_suffix_tokens = token_count(tokenizer, make_messages(base + suffix))
+    growth = one_suffix_tokens - base_tokens
+    if growth <= 0:
+        raise RuntimeError("filler does not increase tokenizer length")
+    upper = max(1, math.ceil((target - base_tokens) / growth))
+    while token_count(tokenizer, make_messages(base + suffix * upper)) < target:
+        upper *= 2
+    lower = 0
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if token_count(tokenizer, make_messages(base + suffix * middle)) >= target:
+            upper = middle
+        else:
+            lower = middle + 1
+    return base + suffix * lower
 
 
 def row(identifier: str, workload: str, prompt: str, target_input: int, output: int, **extra: str) -> dict[str, Any]:
@@ -78,10 +90,12 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(model, revision=revision, local_files_only=True)
     print("Building short workloads...", file=sys.stderr, flush=True)
     for target, base in SHORT_BASE.items():
+        print(f"  short target {target} tokens", file=sys.stderr, flush=True)
         prompt = fill(tokenizer, lambda value: [{"role": "user", "content": value}], base, target)
         print(json.dumps(row(f"short-{target}", "short", prompt, target, 200), ensure_ascii=False), flush=True)
     print("Building long workloads; 8K token calibration can take a short while...", file=sys.stderr, flush=True)
     for target in (2000, 8000):
+        print(f"  long target {target} tokens", file=sys.stderr, flush=True)
         prompt = fill(tokenizer, lambda value: [{"role": "user", "content": value}], LONG_BASE, target)
         print(json.dumps(row(f"long-{target}", "long_context", prompt, target, 500), ensure_ascii=False), flush=True)
     # Keep exactly the same system prefix for each shared-prefix request.
